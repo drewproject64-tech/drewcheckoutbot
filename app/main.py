@@ -33,7 +33,7 @@ async def main() -> None:
 
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
-    db_middleware = DbSessionMiddleware(db)
+    db_middleware = DbSessionMiddleware(db, settings)
     dp.message.middleware(db_middleware)
     dp.callback_query.middleware(db_middleware)
 
