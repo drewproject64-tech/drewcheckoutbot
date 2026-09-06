@@ -25,6 +25,16 @@ async def load_payment(session, payment_id: int) -> Payment | None:
     return result.scalar_one_or_none()
 
 
+async def is_vip_member(bot, channel_id, telegram_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=telegram_id)
+        return member.status in {"creator", "administrator", "member"} or (
+            member.status == "restricted" and getattr(member, "is_member", False)
+        )
+    except Exception:
+        return False
+
+
 @router.callback_query(F.data.startswith("approve_payment:"))
 async def approve_payment(callback: CallbackQuery, user, settings, db_session, bot):
     if not is_admin(callback.from_user.id, settings):
@@ -51,6 +61,17 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         await callback.answer("Customer not found", show_alert=True)
         return
 
+    if not await is_vip_member(bot, settings.vip_channel_id, customer.telegram_id):
+        await callback.answer("User has not joined the VIP channel. Subscription not activated.", show_alert=True)
+        await bot.send_message(
+            customer.telegram_id,
+            "⚠️ Your payment is waiting for VIP access verification.\n\n"
+            f"Join the VIP channel first:\n{settings.vip_channel_link}\n\n"
+            f"After joining, contact the admin: {settings.admin_contact}\n\n"
+            "Your subscription will not start until you have joined the channel.",
+        )
+        return
+
     payment.status = PaymentStatus.APPROVED.value
     payment.admin_id = callback.from_user.id
     payment.reviewed_at = datetime.now(UTC)
@@ -58,27 +79,11 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
     await db_session.commit()
 
     if callback.message.photo:
-        await callback.message.edit_caption(
-            caption=get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id),
-            reply_markup=None,
-        )
+        await callback.message.edit_caption(caption=get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id), reply_markup=None)
     else:
-        await callback.message.edit_text(
-            get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id),
-            reply_markup=None,
-        )
+        await callback.message.edit_text(get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id), reply_markup=None)
 
-    await bot.send_message(
-        customer.telegram_id,
-        get_text(
-            "approval", customer.language,
-            channel=settings.vip_channel_link,
-            contact=settings.admin_contact,
-            plan=plan_name(settings, subscription.plan_key),
-            expires=subscription.expires_at.strftime("%Y-%m-%d %H:%M UTC"),
-            grace=subscription.grace_until.strftime("%Y-%m-%d %H:%M UTC"),
-        ),
-    )
+    await bot.send_message(customer.telegram_id, get_text("approval", customer.language, channel=settings.vip_channel_link, contact=settings.admin_contact, plan=plan_name(settings, subscription.plan_key), expires=subscription.expires_at.strftime("%Y-%m-%d %H:%M UTC"), grace=subscription.grace_until.strftime("%Y-%m-%d %H:%M UTC")))
     await callback.answer("Approved")
 
 
@@ -107,12 +112,10 @@ async def submit_rejection_reason(message: Message, state: FSMContext, settings,
     if not is_admin(message.from_user.id, settings):
         await state.clear()
         return
-
     reason = message.text.strip()[:1000]
     if not reason:
         await message.answer("Please send a rejection reason.")
         return
-
     data = await state.get_data()
     try:
         payment_id = int(data["payment_id"])
@@ -120,13 +123,11 @@ async def submit_rejection_reason(message: Message, state: FSMContext, settings,
         await state.clear()
         await message.answer("Payment context expired. Please review the payment again.")
         return
-
     payment = await load_payment(db_session, payment_id)
     if payment is None or payment.status != PaymentStatus.PENDING.value:
         await state.clear()
         await message.answer("Payment is no longer pending.")
         return
-
     result = await db_session.execute(select(User).where(User.id == payment.user_id))
     customer = result.scalar_one_or_none()
     payment.status = PaymentStatus.REJECTED.value
@@ -134,7 +135,6 @@ async def submit_rejection_reason(message: Message, state: FSMContext, settings,
     payment.admin_note = reason
     payment.reviewed_at = datetime.now(UTC)
     await db_session.commit()
-
     if customer:
         await bot.send_message(customer.telegram_id, get_text("rejection", customer.language, reason=reason))
     await message.answer(get_text("rejected_admin", "en", payment_id=payment_id, admin_id=message.from_user.id))
