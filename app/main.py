@@ -10,6 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.bot.handlers.admin_payments import router as admin_router
+from app.bot.handlers.admin_stats import router as admin_stats_router
 from app.bot.handlers.menu import router as menu_router
 from app.bot.handlers.payments import router as payments_router
 from app.bot.handlers.start import router as start_router
@@ -42,6 +43,7 @@ async def main() -> None:
     dp.include_router(menu_router)
     dp.include_router(payments_router)
     dp.include_router(admin_router)
+    dp.include_router(admin_stats_router)
 
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(process_subscriptions, "interval", minutes=10, args=[bot, db, settings], max_instances=1, coalesce=True)
