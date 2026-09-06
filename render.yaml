@@ -1,0 +1,37 @@
+services:
+  - type: worker
+    name: drew-fx-payment-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.main
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: VIP_CHANNEL_LINK
+        sync: false
+      - key: VIP_CHANNEL_USERNAME
+        sync: false
+      - key: ADMIN_CONTACT
+        sync: false
+      - key: USDT_WALLET
+        sync: false
+      - key: PAYMENT_NETWORK
+        value: TRC20
+      - key: SIGNAL_ROOM_PRICE
+        value: "70"
+      - key: ALL_ACCESS_PRICE
+        value: "100"
+      - key: SUBSCRIPTION_DAYS
+        value: "30"
+      - key: GRACE_PERIOD_DAYS
+        value: "3"
+      - key: REMINDER_DAYS_BEFORE_EXPIRY
+        value: "3"
+      - key: TIMEZONE
+        value: UTC
+      - key: LOG_LEVEL
+        value: INFO
