@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.bot.keyboards.admin import payment_review_keyboard
 from app.bot.keyboards.menu import main_menu
+from app.bot.keyboards.plans import wallet_keyboard
 from app.bot.states import PaymentForm
 from app.database.models import Payment, PaymentStatus
 from app.database.repositories import tx_hash_exists
@@ -37,7 +38,7 @@ async def select_plan(callback: CallbackQuery, state: FSMContext, user, settings
             "payment_instructions", user.language,
             plan=plan["name"], amount=float(plan["price"]), network=settings.payment_network, wallet=settings.usdt_wallet,
         ),
-        reply_markup=main_menu(),
+        reply_markup=wallet_keyboard(settings.usdt_wallet),
     )
     await callback.answer()
 
@@ -63,7 +64,6 @@ async def receive_tx_hash(message: Message, state: FSMContext, user, db_session,
     if not 8 <= len(tx_hash) <= 255:
         await message.answer(get_text("invalid_tx", user.language))
         return
-
     if await tx_hash_exists(db_session, tx_hash):
         await message.answer(get_text("duplicate_tx", user.language))
         return
@@ -77,17 +77,7 @@ async def receive_tx_hash(message: Message, state: FSMContext, user, db_session,
         await message.answer(get_text("invalid_plan", user.language), reply_markup=main_menu())
         return
 
-    payment = Payment(
-        user_id=user.id,
-        plan_key=plan_key,
-        amount=Decimal(str(float(plan["price"]))),
-        currency="USDT",
-        network=settings.payment_network,
-        wallet_address=settings.usdt_wallet,
-        screenshot_file_id=screenshot_file_id,
-        transaction_hash=tx_hash,
-        status=PaymentStatus.PENDING.value,
-    )
+    payment = Payment(user_id=user.id, plan_key=plan_key, amount=Decimal(str(float(plan["price"]))), currency="USDT", network=settings.payment_network, wallet_address=settings.usdt_wallet, screenshot_file_id=screenshot_file_id, transaction_hash=tx_hash, status=PaymentStatus.PENDING.value)
     db_session.add(payment)
     try:
         await db_session.flush()
@@ -98,25 +88,10 @@ async def receive_tx_hash(message: Message, state: FSMContext, user, db_session,
         return
 
     username = f"@{user.username}" if user.username else "—"
-    caption = (
-        "💳 New Payment Pending\n\n"
-        f"Payment ID: #{payment.id}\n"
-        f"User: {user.first_name or 'Unknown'}\n"
-        f"Username: {username}\n"
-        f"Telegram ID: {user.telegram_id}\n\n"
-        f"Plan: {plan['name']}\n"
-        f"Amount: ${float(plan['price']):.2f} USDT\n"
-        f"Network: {settings.payment_network}\n\n"
-        f"Transaction hash:\n{tx_hash}"
-    )
+    caption = ("💳 New Payment Pending\n\n" f"Payment ID: #{payment.id}\n" f"User: {user.first_name or 'Unknown'}\n" f"Username: {username}\n" f"Telegram ID: {user.telegram_id}\n\n" f"Plan: {plan['name']}\n" f"Amount: ${float(plan['price']):.2f} USDT\n" f"Network: {settings.payment_network}\n\n" f"Transaction hash:\n{tx_hash}")
     for admin_id in settings.admin_ids:
         try:
-            await bot.send_photo(
-                admin_id,
-                payment.screenshot_file_id,
-                caption=caption,
-                reply_markup=payment_review_keyboard(payment.id),
-            )
+            await bot.send_photo(admin_id, payment.screenshot_file_id, caption=caption, reply_markup=payment_review_keyboard(payment.id))
         except Exception:
             continue
 
