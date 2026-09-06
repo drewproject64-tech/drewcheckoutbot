@@ -7,7 +7,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-from app.bot.keyboards.admin import payment_review_keyboard
 from app.bot.states import RejectionForm
 from app.database.models import Payment, PaymentStatus, User
 from app.locales import get_text
@@ -38,7 +37,7 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         await callback.answer("Invalid payment", show_alert=True)
         return
 
-    payment = await load_payment(db_session.session, payment_id)
+    payment = await load_payment(db_session, payment_id)
     if payment is None:
         await callback.answer("Payment not found", show_alert=True)
         return
@@ -46,7 +45,7 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         await callback.answer(f"Already {payment.status}", show_alert=True)
         return
 
-    result = await db_session.session.execute(select(User).where(User.id == payment.user_id))
+    result = await db_session.execute(select(User).where(User.id == payment.user_id))
     customer = result.scalar_one_or_none()
     if customer is None:
         await callback.answer("Customer not found", show_alert=True)
@@ -55,10 +54,20 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
     payment.status = PaymentStatus.APPROVED.value
     payment.admin_id = callback.from_user.id
     payment.reviewed_at = datetime.now(UTC)
-    subscription = await activate_subscription(db_session.session, payment, customer, settings)
-    await db_session.session.commit()
+    subscription = await activate_subscription(db_session, payment, customer, settings)
+    await db_session.commit()
 
-    await callback.message.edit_caption(caption=get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id))
+    if callback.message.photo:
+        await callback.message.edit_caption(
+            caption=get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id),
+            reply_markup=None,
+        )
+    else:
+        await callback.message.edit_text(
+            get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id),
+            reply_markup=None,
+        )
+
     await bot.send_message(
         customer.telegram_id,
         get_text(
@@ -83,12 +92,12 @@ async def reject_payment(callback: CallbackQuery, state: FSMContext, user, setti
     except (ValueError, IndexError):
         await callback.answer("Invalid payment", show_alert=True)
         return
-    payment = await load_payment(db_session.session, payment_id)
+    payment = await load_payment(db_session, payment_id)
     if payment is None or payment.status != PaymentStatus.PENDING.value:
         await callback.answer("Payment is no longer pending", show_alert=True)
         return
     await state.set_state(RejectionForm.waiting_reason)
-    await state.update_data(payment_id=payment_id, admin_id=callback.from_user.id, language=user.language)
+    await state.update_data(payment_id=payment_id, admin_id=callback.from_user.id)
     await callback.message.answer("Send the rejection reason for payment #" + str(payment_id) + ".")
     await callback.answer()
 
@@ -98,26 +107,33 @@ async def submit_rejection_reason(message: Message, state: FSMContext, settings,
     if not is_admin(message.from_user.id, settings):
         await state.clear()
         return
+
     reason = message.text.strip()[:1000]
     if not reason:
         await message.answer("Please send a rejection reason.")
         return
 
     data = await state.get_data()
-    payment_id = int(data["payment_id"])
-    payment = await load_payment(db_session.session, payment_id)
+    try:
+        payment_id = int(data["payment_id"])
+    except (KeyError, ValueError):
+        await state.clear()
+        await message.answer("Payment context expired. Please review the payment again.")
+        return
+
+    payment = await load_payment(db_session, payment_id)
     if payment is None or payment.status != PaymentStatus.PENDING.value:
         await state.clear()
         await message.answer("Payment is no longer pending.")
         return
 
-    result = await db_session.session.execute(select(User).where(User.id == payment.user_id))
+    result = await db_session.execute(select(User).where(User.id == payment.user_id))
     customer = result.scalar_one_or_none()
     payment.status = PaymentStatus.REJECTED.value
     payment.admin_id = message.from_user.id
     payment.admin_note = reason
     payment.reviewed_at = datetime.now(UTC)
-    await db_session.session.commit()
+    await db_session.commit()
 
     if customer:
         await bot.send_message(customer.telegram_id, get_text("rejection", customer.language, reason=reason))
