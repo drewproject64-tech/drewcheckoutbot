@@ -1,10 +1,10 @@
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from app.bot.keyboards.menu import main_menu
 from app.bot.keyboards.navigation import language_keyboard
 from app.bot.keyboards.plans import plans_keyboard
-from app.bot.keyboards.menu import main_menu
 from app.locales import get_text
 from app.services.subscription_service import format_subscription_status
 
@@ -23,7 +23,7 @@ async def payment_menu(message: Message, user, settings):
 
 @router.message(F.text == "📋 My Subscription")
 async def my_subscription(message: Message, user, db_session, settings):
-    text = await format_subscription_status(db_session.session, user, settings)
+    text = await format_subscription_status(db_session, user, settings)
     await message.answer(text, reply_markup=main_menu())
 
 
