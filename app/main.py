@@ -14,7 +14,7 @@ from app.bot.handlers.menu import router as menu_router
 from app.bot.handlers.payments import router as payments_router
 from app.bot.handlers.start import router as start_router
 from app.bot.language import router as language_router
-from app.bot.middleware import DbUserMiddleware
+from app.bot.middleware import DbSessionMiddleware
 from app.config import load_settings
 from app.database.database import Database
 from app.services.expiration_worker import process_subscriptions
@@ -33,8 +33,9 @@ async def main() -> None:
 
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
-    dp.message.middleware(DbUserMiddleware(db))
-    dp.callback_query.middleware(DbUserMiddleware(db))
+    db_middleware = DbSessionMiddleware(db)
+    dp.message.middleware(db_middleware)
+    dp.callback_query.middleware(db_middleware)
 
     dp.include_router(language_router)
     dp.include_router(start_router)
@@ -43,14 +44,7 @@ async def main() -> None:
     dp.include_router(admin_router)
 
     scheduler = AsyncIOScheduler(timezone="UTC")
-    scheduler.add_job(
-        process_subscriptions,
-        "interval",
-        minutes=10,
-        args=[bot, db, settings],
-        max_instances=1,
-        coalesce=True,
-    )
+    scheduler.add_job(process_subscriptions, "interval", minutes=10, args=[bot, db, settings], max_instances=1, coalesce=True)
     scheduler.start()
     logger.info("Expiration worker started.")
 
