@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.exc import IntegrityError
 
+from app.bot.keyboards.admin import payment_review_keyboard
 from app.bot.keyboards.menu import main_menu
 from app.bot.states import PaymentForm
 from app.database.models import Payment, PaymentStatus
@@ -63,14 +64,15 @@ async def receive_tx_hash(message: Message, state: FSMContext, user, db_session,
         await message.answer(get_text("invalid_tx", user.language))
         return
 
-    if await tx_hash_exists(db_session.session, tx_hash):
+    if await tx_hash_exists(db_session, tx_hash):
         await message.answer(get_text("duplicate_tx", user.language))
         return
 
     data = await state.get_data()
     plan_key = data.get("plan_key")
     plan = _plan(settings, plan_key or "")
-    if plan is None or not data.get("screenshot_file_id"):
+    screenshot_file_id = data.get("screenshot_file_id")
+    if plan is None or not screenshot_file_id:
         await state.clear()
         await message.answer(get_text("invalid_plan", user.language), reply_markup=main_menu())
         return
@@ -82,35 +84,38 @@ async def receive_tx_hash(message: Message, state: FSMContext, user, db_session,
         currency="USDT",
         network=settings.payment_network,
         wallet_address=settings.usdt_wallet,
-        screenshot_file_id=data["screenshot_file_id"],
+        screenshot_file_id=screenshot_file_id,
         transaction_hash=tx_hash,
         status=PaymentStatus.PENDING.value,
     )
-    db_session.session.add(payment)
+    db_session.add(payment)
     try:
-        await db_session.session.flush()
-        await db_session.session.commit()
+        await db_session.flush()
+        await db_session.commit()
     except IntegrityError:
-        await db_session.session.rollback()
+        await db_session.rollback()
         await message.answer(get_text("duplicate_tx", user.language))
         return
 
+    username = f"@{user.username}" if user.username else "—"
+    caption = (
+        "💳 New Payment Pending\n\n"
+        f"Payment ID: #{payment.id}\n"
+        f"User: {user.first_name or 'Unknown'}\n"
+        f"Username: {username}\n"
+        f"Telegram ID: {user.telegram_id}\n\n"
+        f"Plan: {plan['name']}\n"
+        f"Amount: ${float(plan['price']):.2f} USDT\n"
+        f"Network: {settings.payment_network}\n\n"
+        f"Transaction hash:\n{tx_hash}"
+    )
     for admin_id in settings.admin_ids:
         try:
             await bot.send_photo(
                 admin_id,
                 payment.screenshot_file_id,
-                caption=(
-                    "💳 New Payment Pending\n\n"
-                    f"Payment ID: #{payment.id}\n"
-                    f"User: {user.first_name or 'Unknown'}\n"
-                    f"Username: @{user.username}" if user.username else f"Username: —"
-                    f"\nTelegram ID: {user.telegram_id}\n\n"
-                    f"Plan: {plan['name']}\nAmount: ${float(plan['price']):.2f} USDT\n"
-                    f"Network: {settings.payment_network}\n\n"
-                    f"Transaction hash:\n{tx_hash}"
-                ),
-                reply_markup=__import__("app.bot.keyboards.admin", fromlist=["payment_review_keyboard"]).payment_review_keyboard(payment.id),
+                caption=caption,
+                reply_markup=payment_review_keyboard(payment.id),
             )
         except Exception:
             continue
