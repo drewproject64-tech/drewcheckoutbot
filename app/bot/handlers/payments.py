@@ -204,7 +204,7 @@ def format_money(amount: Decimal, currency: str) -> str:
     return f"{symbol}{amount:,.2f}" if symbol else f"{amount:,.2f} {currency}"
 
 
-@router.message(F.text)
+@router.message(F.text.regexp(r"(?i)^(?=.*\\d)[\\s€$£¥₹₦₽₩₺₫₴₱฿A-Z0-9.,'’]+$"))
 async def submit_investment_amount(message: Message, user, db_session, settings, bot, state: FSMContext):
     if not user.investment_pending:
         return
