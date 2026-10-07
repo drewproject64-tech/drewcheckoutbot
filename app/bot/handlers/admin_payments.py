@@ -117,6 +117,8 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         payment.admin_id = callback.from_user.id
         payment.reviewed_at = datetime.now(UTC)
         subscription = await activate_subscription(db_session, payment, customer, settings)
+        if payment.plan_key == "signal_room":
+            customer.investment_pending = True
         await db_session.commit()
     except Exception as exc:
         await db_session.rollback()
