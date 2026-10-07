@@ -112,11 +112,20 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         )
         return
 
-    payment.status = PaymentStatus.APPROVED.value
-    payment.admin_id = callback.from_user.id
-    payment.reviewed_at = datetime.now(UTC)
-    subscription = await activate_subscription(db_session, payment, customer, settings)
-    await db_session.commit()
+    try:
+        payment.status = PaymentStatus.APPROVED.value
+        payment.admin_id = callback.from_user.id
+        payment.reviewed_at = datetime.now(UTC)
+        subscription = await activate_subscription(db_session, payment, customer, settings)
+        await db_session.commit()
+    except Exception as exc:
+        await db_session.rollback()
+        print(f"Payment approval failed for #{payment.id}: {exc}")
+        await callback.answer(
+            "Approval failed. The payment was not changed.",
+            show_alert=True,
+        )
+        return
 
     if callback.message.photo:
         await callback.message.edit_caption(
@@ -169,8 +178,10 @@ async def reject_payment(callback: CallbackQuery, state: FSMContext, user, setti
         return
     await state.set_state(RejectionForm.waiting_reason)
     await state.update_data(payment_id=payment_id, admin_id=callback.from_user.id)
-    await callback.message.answer("Send the rejection reason for payment #" + str(payment_id) + ".")
-    await callback.answer()
+    await callback.answer("Enter the rejection reason.")
+    await callback.message.answer(
+        "❌ Send the rejection reason for payment #" + str(payment_id) + "."
+    )
 
 
 @router.message(RejectionForm.waiting_reason, F.text)
@@ -196,11 +207,18 @@ async def submit_rejection_reason(message: Message, state: FSMContext, settings,
         return
     result = await db_session.execute(select(User).where(User.id == payment.user_id))
     customer = result.scalar_one_or_none()
-    payment.status = PaymentStatus.REJECTED.value
-    payment.admin_id = message.from_user.id
-    payment.admin_note = reason
-    payment.reviewed_at = datetime.now(UTC)
-    await db_session.commit()
+    try:
+        payment.status = PaymentStatus.REJECTED.value
+        payment.admin_id = message.from_user.id
+        payment.admin_note = reason
+        payment.reviewed_at = datetime.now(UTC)
+        await db_session.commit()
+    except Exception as exc:
+        await db_session.rollback()
+        print(f"Payment rejection failed for #{payment_id}: {exc}")
+        await state.clear()
+        await message.answer("❌ Rejection failed. The payment was not changed.")
+        return
     if customer:
         await bot.send_message(customer.telegram_id, get_text("rejection", customer.language, reason=reason))
     await message.answer(get_text("rejected_admin", "en", payment_id=payment_id, admin_id=message.from_user.id))
