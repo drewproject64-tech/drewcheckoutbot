@@ -152,7 +152,7 @@ async def convert_to_eur(amount: Decimal, currency: str) -> Decimal:
     url = f"https://api.frankfurter.dev/v2/rate/{currency.lower()}/eur"
     async with httpx.AsyncClient(timeout=8.0) as client:
         response = await client.get(url)
-        if response.status_code == 422:
+        if response.status_code in {404, 422}:
             raise ValueError("unsupported_currency")
         response.raise_for_status()
         payload = response.json()
@@ -301,7 +301,7 @@ async def submit_investment_amount(message: Message, user, db_session, settings,
 
     await state.clear()
     await message.answer(
-        get_text("investment_noted", user.language, amount=formatted_amount),
+        get_text("investment_noted", user.language, amount=formatted_amount, eur_equivalent=f"€{eur_equivalent:,.2f}"),
         reply_markup=main_menu(),
     )
     await message.answer(
