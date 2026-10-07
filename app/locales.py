@@ -31,7 +31,7 @@ TEXTS = {
         "investment_too_low": "❌ That amount is below the minimum.\n\nYou entered: {amount}\nEUR equivalent: {eur_equivalent}\nMinimum required: {minimum}\n\nPlease enter an amount worth at least €500.",
         "investment_currency_unsupported": "❌ I could not verify the currency {currency}. Please use a valid 3-letter currency code such as EUR, USD, GBP, NGN, CAD, AUD, or CHF.",
         "investment_rate_unavailable": "⚠️ I could not retrieve the exchange rate right now. Your amount has not been submitted. Please try again in a moment.",
-        "investment_noted": "✅ INVESTMENT AMOUNT NOTED\n\nYour preferred investment amount of {amount} has been recorded.\n\nOur team will assist you with the next steps.",
+        "investment_noted": "✅ INVESTMENT AMOUNT NOTED\n\nYour preferred investment amount of {amount} has been recorded.\nEUR equivalent: {eur_equivalent}\n\nOur team will assist you with the next steps.",
         "investment_next_step": "👤 NEXT STEP\n\nYour investment preference has been noted.\n\nPlease contact our admin team to receive the appropriate broker information and assistance with your investment setup.\n\nVIP Signal Room:\n{vip}",
         "investment_admin_notification": "🔔 NEW SIGNAL ROOM INVESTMENT PREFERENCE\n\n👤 Name: {name}\n📱 Username: {username}\n🆔 Telegram ID: {telegram_id}\n\n💳 Subscription Plan: {plan}\n💰 Preferred Investment: {amount}\n🇪🇺 EUR Equivalent: {eur_equivalent}\n\nStatus: Investment amount noted",
     },
