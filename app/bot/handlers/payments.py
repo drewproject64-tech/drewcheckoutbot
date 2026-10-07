@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import httpx
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -142,6 +144,25 @@ _CURRENCY_NAMES = {
 _CURRENCY_CODES = set(_CURRENCY_NAMES.values())
 
 
+async def convert_to_eur(amount: Decimal, currency: str) -> Decimal:
+    currency = currency.upper()
+    if currency == "EUR":
+        return amount.quantize(Decimal("0.01"))
+
+    url = f"https://api.frankfurter.dev/v2/rate/{currency.lower()}/eur"
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.get(url)
+        if response.status_code == 422:
+            raise ValueError("unsupported_currency")
+        response.raise_for_status()
+        payload = response.json()
+
+    rate = Decimal(str(payload["rate"]))
+    if not rate.is_finite() or rate <= 0:
+        raise ValueError("invalid_rate")
+    return (amount * rate).quantize(Decimal("0.01"))
+
+
 def parse_investment_amount(raw: str) -> tuple[Decimal, str]:
     text_value = raw.strip()
     if not text_value:
@@ -159,7 +180,7 @@ def parse_investment_amount(raw: str) -> tuple[Decimal, str]:
     if currency is None:
         import re
         match = re.search(r"(?<![A-Z])[A-Z]{3}(?![A-Z])", upper)
-        if match and match.group(0) in _CURRENCY_CODES:
+        if match:
             currency = match.group(0)
             text_value = upper.replace(currency, "")
 
@@ -221,10 +242,28 @@ async def submit_investment_amount(message: Message, user, db_session, settings,
         )
         return
 
-    minimum = Decimal(str(settings.minimum_investment_eur))
-    if amount < minimum:
+    minimum_eur = Decimal(str(settings.minimum_investment_eur))
+
+    try:
+        eur_equivalent = await convert_to_eur(amount, currency)
+    except ValueError:
         await message.answer(
-            get_text("investment_too_low", user.language, minimum=f"{minimum:,.0f}")
+            get_text("investment_currency_unsupported", user.language, currency=currency)
+        )
+        return
+    except (httpx.HTTPError, KeyError, ArithmeticError):
+        await message.answer(get_text("investment_rate_unavailable", user.language))
+        return
+
+    if eur_equivalent < minimum_eur:
+        await message.answer(
+            get_text(
+                "investment_too_low",
+                user.language,
+                amount=format_money(amount, currency),
+                eur_equivalent=f"€{eur_equivalent:,.2f}",
+                minimum=f"€{minimum_eur:,.2f}",
+            )
         )
         return
 
@@ -237,6 +276,7 @@ async def submit_investment_amount(message: Message, user, db_session, settings,
 
     user.preferred_investment_amount = amount
     user.preferred_investment_currency = currency
+    user.preferred_investment_eur_equivalent = eur_equivalent
     user.investment_submitted_at = datetime.now(timezone.utc)
     user.investment_pending = False
     await db_session.commit()
@@ -251,6 +291,7 @@ async def submit_investment_amount(message: Message, user, db_session, settings,
         telegram_id=user.telegram_id,
         plan="{} Signal Room".format(settings.signal_room_price),
         amount=formatted_amount,
+        eur_equivalent=f"€{eur_equivalent:,.2f}",
     )
     for admin_id in settings.admin_ids:
         try:
