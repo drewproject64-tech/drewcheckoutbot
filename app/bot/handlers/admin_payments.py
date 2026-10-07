@@ -84,6 +84,9 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         await callback.message.edit_text(get_text("approved_admin", "en", payment_id=payment.id, admin_id=callback.from_user.id), reply_markup=None)
 
     await bot.send_message(customer.telegram_id, get_text("approval", customer.language, channel=settings.vip_channel_link, contact=settings.admin_contact, plan=plan_name(settings, subscription.plan_key), expires=subscription.expires_at.strftime("%Y-%m-%d %H:%M UTC"), grace=subscription.grace_until.strftime("%Y-%m-%d %H:%M UTC")))
+    if payment.plan_key == "signal_room":
+        from app.bot.states import InvestmentForm
+        await bot.send_message(customer.telegram_id, get_text("investment_prompt", customer.language, minimum=f"€{settings.minimum_investment_eur:,.0f}"))
     await callback.answer("Approved")
 
 
