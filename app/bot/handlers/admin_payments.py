@@ -61,7 +61,11 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         await callback.answer("Customer not found", show_alert=True)
         return
 
-    if not await is_vip_member(bot, settings.vip_channel_id, customer.telegram_id):
+    vip_channel_ref = settings.vip_channel_username.strip()
+    if vip_channel_ref and not vip_channel_ref.startswith(("@", "-100")):
+        vip_channel_ref = "@" + vip_channel_ref
+
+    if not await is_vip_member(bot, vip_channel_ref, customer.telegram_id):
         await callback.answer("User has not joined the VIP channel. Subscription not activated.", show_alert=True)
         await bot.send_message(
             customer.telegram_id,
