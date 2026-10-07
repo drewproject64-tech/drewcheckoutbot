@@ -86,4 +86,4 @@ class Subscription(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship(back_populates="subscriptions")
-    payment: Mapped["Payment"] = relationship(back_populates="payment", uselist=False)
+    payment: Mapped["Payment"] = relationship(back_populates="subscription")
