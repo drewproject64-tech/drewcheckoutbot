@@ -22,6 +22,24 @@ router = Router(name="payments")
 def _plan(settings, key: str):
     return settings.plans.get(key)
 
+@router.message(F.text == "💰 Investment Amount")
+async def prompt_investment(message: Message, user, db_session, settings, state: FSMContext):
+    subscription = await active_signal_subscription(db_session, user.id)
+    if not subscription:
+        await message.answer(get_text("no_subscription", user.language), reply_markup=main_menu())
+        return
+    user.investment_pending = True
+    await db_session.commit()
+    await state.set_state(InvestmentForm.waiting_amount)
+    await message.answer(
+        get_text(
+            "investment_prompt",
+            user.language,
+            minimum=f"{settings.minimum_investment_eur:,.0f}",
+        ),
+        reply_markup=main_menu(),
+    )
+
 @router.callback_query(lambda c: bool(c.data and c.data.startswith("plan:")))
 async def select_plan(callback: CallbackQuery, state: FSMContext, user, settings):
     plan_key = callback.data.split(":", 1)[1]
