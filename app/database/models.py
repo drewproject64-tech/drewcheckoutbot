@@ -33,6 +33,8 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
+    preferred_investment_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    investment_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_blocked: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -84,4 +86,4 @@ class Subscription(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship(back_populates="subscriptions")
-    payment: Mapped["Payment"] = relationship(back_populates="subscription")
+    payment: Mapped["Payment"] = relationship(back_populates="payment", uselist=False)
