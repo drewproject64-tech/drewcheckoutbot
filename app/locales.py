@@ -26,6 +26,12 @@ TEXTS = {
         "invalid_plan": "That plan is no longer available. Please return to the menu and try again.",
         "approved_admin": "✅ Payment #{payment_id} approved by admin {admin_id}.",
         "rejected_admin": "❌ Payment #{payment_id} rejected by admin {admin_id}.",
+        "investment_prompt": "💰 WHAT IS YOUR PREFERRED INVESTMENT?\n\nEnter the amount you plan to invest with your preferred broker.\n\nMinimum investment: {minimum}\n\nExample: €1,000",
+        "investment_invalid": "❌ Please enter a valid investment amount, for example €1,000.",
+        "investment_too_low": "❌ The minimum preferred investment is {minimum}. Please enter an amount of {minimum} or more.",
+        "investment_noted": "✅ INVESTMENT AMOUNT NOTED\n\nYour preferred investment amount of {amount} has been recorded.\n\nOur team will assist you with the next steps.",
+        "investment_next_step": "👤 NEXT STEP\n\nYour investment preference has been noted.\n\nPlease contact our admin team to receive the appropriate broker information and assistance with your investment setup.\n\nVIP Signal Room:\n{vip}",
+        "investment_admin_notification": "🔔 NEW SIGNAL ROOM INVESTMENT PREFERENCE\n\n👤 Name: {name}\n📱 Username: {username}\n🆔 Telegram ID: {telegram_id}\n\n💳 Subscription Plan: {plan}\n💰 Preferred Investment: {amount}\n\nStatus: Investment amount noted",
     },
     "it": {
         "welcome": "Benvenuto in Drew FX VIP 🚀\n\nSeleziona la tua lingua:",
