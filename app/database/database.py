@@ -33,6 +33,18 @@ class Database:
                     "ADD COLUMN IF NOT EXISTS investment_submitted_at TIMESTAMPTZ"
                 )
             )
+            await conn.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN IF NOT EXISTS preferred_investment_currency VARCHAR(16)"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE users "
+                    "ADD COLUMN IF NOT EXISTS investment_pending BOOLEAN DEFAULT FALSE"
+                )
+            )
 
     async def session(self) -> AsyncIterator[AsyncSession]:
         async with self.session_factory() as session:
