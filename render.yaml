@@ -25,6 +25,8 @@ services:
         value: "70"
       - key: ALL_ACCESS_PRICE
         value: "100"
+      - key: MINIMUM_INVESTMENT_EUR
+        value: "500"
       - key: SUBSCRIPTION_DAYS
         value: "30"
       - key: GRACE_PERIOD_DAYS
