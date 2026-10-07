@@ -158,7 +158,7 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
             get_text(
                 "investment_prompt",
                 customer.language,
-                minimum=f"€{settings.minimum_investment_eur:,.0f}",
+                minimum=f"{settings.minimum_investment_eur:,.0f}",
             ),
         )
     await callback.answer("Approved")
