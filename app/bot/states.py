@@ -6,5 +6,9 @@ class PaymentForm(StatesGroup):
     waiting_tx_hash = State()
 
 
+class InvestmentForm(StatesGroup):
+    waiting_amount = State()
+
+
 class RejectionForm(StatesGroup):
     waiting_reason = State()
