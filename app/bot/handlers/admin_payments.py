@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
@@ -25,14 +26,23 @@ async def load_payment(session, payment_id: int) -> Payment | None:
     return result.scalar_one_or_none()
 
 
-async def is_vip_member(bot, channel_id, telegram_id: int) -> bool:
+async def is_vip_member(bot, channel_id, telegram_id: int) -> tuple[bool, str | None]:
+    """Return (is_member, error).
+
+    A Telegram API error is returned separately so configuration/permission
+    problems are not incorrectly reported as the user having left the channel.
+    """
     try:
+        await bot.get_chat(chat_id=channel_id)
         member = await bot.get_chat_member(chat_id=channel_id, user_id=telegram_id)
-        return member.status in {"creator", "administrator", "member"} or (
+        is_member = member.status in {"creator", "administrator", "member"} or (
             member.status == "restricted" and getattr(member, "is_member", False)
         )
-    except Exception:
-        return False
+        return is_member, None
+    except TelegramAPIError as exc:
+        return False, str(exc)
+    except Exception as exc:
+        return False, str(exc)
 
 
 @router.callback_query(F.data.startswith("approve_payment:"))
@@ -62,11 +72,37 @@ async def approve_payment(callback: CallbackQuery, user, settings, db_session, b
         return
 
     vip_channel_ref = settings.vip_channel_username.strip()
+    if not vip_channel_ref:
+        vip_channel_ref = settings.vip_channel_link.rstrip("/").rsplit("/", 1)[-1]
     if vip_channel_ref and not vip_channel_ref.startswith(("@", "-100")):
         vip_channel_ref = "@" + vip_channel_ref
 
-    if not await is_vip_member(bot, vip_channel_ref, customer.telegram_id):
-        await callback.answer("User has not joined the VIP channel. Subscription not activated.", show_alert=True)
+    is_member, membership_error = await is_vip_member(
+        bot, vip_channel_ref, customer.telegram_id
+    )
+
+    if membership_error:
+        await callback.answer(
+            "VIP channel verification failed. Check that the bot is an admin in the VIP channel.",
+            show_alert=True,
+        )
+        await bot.send_message(
+            customer.telegram_id,
+            "⚠️ We could not verify your VIP channel membership right now.\n\n"
+            "Please make sure you have joined the VIP channel, then contact the admin. "
+            "Your payment remains pending until membership can be verified.",
+        )
+        print(
+            f"VIP membership check failed for channel={vip_channel_ref!r}, "
+            f"user={customer.telegram_id}: {membership_error}"
+        )
+        return
+
+    if not is_member:
+        await callback.answer(
+            "User has not joined the VIP channel. Subscription not activated.",
+            show_alert=True,
+        )
         await bot.send_message(
             customer.telegram_id,
             "⚠️ Your payment is waiting for VIP access verification.\n\n"
