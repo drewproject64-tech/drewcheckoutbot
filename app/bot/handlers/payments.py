@@ -89,39 +89,168 @@ async def invalid_tx_message(message: Message, user):
     await message.answer(get_text("invalid_tx", user.language))
 
 async def active_signal_subscription(session, user_id: int) -> Subscription | None:
-    result = await session.execute(select(Subscription).where(Subscription.user_id == user_id, Subscription.plan_key == "signal_room", Subscription.status == SubscriptionStatus.ACTIVE.value).order_by(Subscription.expires_at.desc()).limit(1))
+    result = await session.execute(
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.plan_key == "signal_room",
+            Subscription.status == SubscriptionStatus.ACTIVE.value,
+        )
+        .order_by(Subscription.expires_at.desc())
+        .limit(1)
+    )
     return result.scalar_one_or_none()
 
-@router.message(InvestmentForm.waiting_amount, F.text)
+
+_CURRENCY_SYMBOLS = {
+    "€": "EUR", "$": "USD", "£": "GBP", "¥": "JPY", "₹": "INR", "₦": "NGN",
+    "₽": "RUB", "₩": "KRW", "₺": "TRY", "₫": "VND", "₴": "UAH",
+    "₱": "PHP", "฿": "THB", "R$": "BRL",
+}
+
+_CURRENCY_NAMES = {
+    "EUR": "EUR", "EURO": "EUR", "EUROS": "EUR",
+    "USD": "USD", "US DOLLAR": "USD", "US DOLLARS": "USD", "DOLLAR": "USD", "DOLLARS": "USD",
+    "GBP": "GBP", "POUND": "GBP", "POUNDS": "GBP", "STERLING": "GBP",
+    "JPY": "JPY", "YEN": "JPY", "INR": "INR", "RUPEE": "INR", "RUPEES": "INR",
+    "NGN": "NGN", "NAIRA": "NGN", "CAD": "CAD", "AUD": "AUD", "CHF": "CHF",
+    "CNY": "CNY", "RMB": "CNY", "ZAR": "ZAR", "BRL": "BRL", "MXN": "MXN",
+    "SGD": "SGD", "NZD": "NZD", "AED": "AED", "SAR": "SAR", "QAR": "QAR",
+    "HKD": "HKD", "SEK": "SEK", "NOK": "NOK", "DKK": "DKK", "PLN": "PLN",
+    "TRY": "TRY", "KRW": "KRW", "THB": "THB", "PHP": "PHP", "VND": "VND",
+    "RUB": "RUB", "UAH": "UAH",
+}
+
+_CURRENCY_CODES = set(_CURRENCY_NAMES.values())
+
+
+def parse_investment_amount(raw: str) -> tuple[Decimal, str]:
+    text_value = raw.strip()
+    if not text_value:
+        raise ValueError
+
+    currency = None
+    upper = text_value.upper()
+
+    for symbol, code in sorted(_CURRENCY_SYMBOLS.items(), key=lambda item: len(item[0]), reverse=True):
+        if symbol in text_value:
+            currency = code
+            text_value = text_value.replace(symbol, "")
+            break
+
+    if currency is None:
+        import re
+        match = re.search(r"(?<![A-Z])[A-Z]{3}(?![A-Z])", upper)
+        if match and match.group(0) in _CURRENCY_CODES:
+            currency = match.group(0)
+            text_value = upper.replace(currency, "")
+
+    if currency is None:
+        for name, code in sorted(_CURRENCY_NAMES.items(), key=lambda item: len(item[0]), reverse=True):
+            if name in upper:
+                currency = code
+                text_value = upper.replace(name, "")
+                break
+
+    if currency is None:
+        currency = "EUR"
+
+    numeric = text_value.strip().replace(" ", "").replace("'", "")
+    if not numeric:
+        raise ValueError
+
+    if "," in numeric and "." in numeric:
+        if numeric.rfind(",") > numeric.rfind("."):
+            numeric = numeric.replace(".", "").replace(",", ".")
+        else:
+            numeric = numeric.replace(",", "")
+    elif "," in numeric:
+        parts = numeric.split(",")
+        numeric = "".join(parts[:-1]) + "." + parts[-1] if len(parts[-1]) != 3 else "".join(parts)
+    elif "." in numeric:
+        parts = numeric.split(".")
+        numeric = "".join(parts[:-1]) + "." + parts[-1] if len(parts[-1]) != 3 else "".join(parts)
+
+    if not numeric.replace(".", "", 1).isdigit():
+        raise ValueError
+
+    amount = Decimal(numeric)
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError
+    return amount.quantize(Decimal("0.01")), currency
+
+
+def format_money(amount: Decimal, currency: str) -> str:
+    symbols = {v: k for k, v in _CURRENCY_SYMBOLS.items()}
+    symbol = symbols.get(currency)
+    return f"{symbol}{amount:,.2f}" if symbol else f"{amount:,.2f} {currency}"
+
+
+@router.message(F.text)
 async def submit_investment_amount(message: Message, user, db_session, settings, bot, state: FSMContext):
-    raw = message.text.strip().replace("€", "").replace("EUR", "").replace("eur", "").replace(" ", "").replace(",", ".")
-    try:
-        amount = Decimal(raw)
-        if not amount.is_finite() or amount <= 0:
-            raise ValueError
-    except (ValueError, ArithmeticError):
-        await message.answer(get_text("investment_invalid", user.language))
+    if not user.investment_pending:
         return
+
+    try:
+        amount, currency = parse_investment_amount(message.text)
+    except (ValueError, ArithmeticError):
+        await message.answer(
+            get_text(
+                "investment_invalid",
+                user.language,
+                example="$1,000, €1,000, £1,000, or 1,000 USD",
+            )
+        )
+        return
+
     minimum = Decimal(str(settings.minimum_investment_eur))
     if amount < minimum:
-        await message.answer(get_text("investment_too_low", user.language, minimum=f"€{minimum:,.2f}"))
+        await message.answer(
+            get_text("investment_too_low", user.language, minimum=f"{minimum:,.0f}")
+        )
         return
+
     subscription = await active_signal_subscription(db_session, user.id)
     if not subscription:
-        await state.clear()
+        user.investment_pending = False
+        await db_session.commit()
         await message.answer(get_text("no_subscription", user.language), reply_markup=main_menu())
         return
-    amount = amount.quantize(Decimal("0.01"))
+
     user.preferred_investment_amount = amount
+    user.preferred_investment_currency = currency
     user.investment_submitted_at = datetime.now(timezone.utc)
+    user.investment_pending = False
     await db_session.commit()
+
     username = f"@{user.username}" if user.username else "—"
-    admin_text = get_text("investment_admin_notification", "en", name=user.first_name or "Unknown", username=username, telegram_id=user.telegram_id, plan=f"${settings.signal_room_price:.0f} Signal Room", amount=f"€{amount:,.2f}")
+    formatted_amount = format_money(amount, currency)
+    admin_text = get_text(
+        "investment_admin_notification",
+        "en",
+        name=user.first_name or "Unknown",
+        username=username,
+        telegram_id=user.telegram_id,
+        plan="{} Signal Room".format(settings.signal_room_price),
+        amount=formatted_amount,
+    )
     for admin_id in settings.admin_ids:
         try:
             await bot.send_message(admin_id, admin_text)
         except Exception:
             continue
+
     await state.clear()
-    await message.answer(get_text("investment_noted", user.language, amount=f"€{amount:,.2f}"), reply_markup=main_menu())
-    await message.answer(get_text("investment_next_step", user.language, contact=settings.admin_contact, vip=settings.vip_channel_link), reply_markup=main_menu())
+    await message.answer(
+        get_text("investment_noted", user.language, amount=formatted_amount),
+        reply_markup=main_menu(),
+    )
+    await message.answer(
+        get_text(
+            "investment_next_step",
+            user.language,
+            contact=settings.admin_contact,
+            vip=settings.vip_channel_link,
+        ),
+        reply_markup=main_menu(),
+    )
