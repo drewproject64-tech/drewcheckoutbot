@@ -46,6 +46,7 @@ class Settings:
     payment_network: str
     signal_room_price: float
     all_access_price: float
+    minimum_investment_eur: float
     subscription_days: int
     grace_period_days: int
     reminder_days_before_expiry: int
@@ -80,6 +81,7 @@ def load_settings() -> Settings:
         payment_network=os.getenv("PAYMENT_NETWORK", "TRC20").strip().upper(),
         signal_room_price=float(os.getenv("SIGNAL_ROOM_PRICE", "70")),
         all_access_price=float(os.getenv("ALL_ACCESS_PRICE", "100")),
+        minimum_investment_eur=float(os.getenv("MINIMUM_INVESTMENT_EUR", "500")),
         subscription_days=int(os.getenv("SUBSCRIPTION_DAYS", "30")),
         grace_period_days=int(os.getenv("GRACE_PERIOD_DAYS", "3")),
         reminder_days_before_expiry=int(os.getenv("REMINDER_DAYS_BEFORE_EXPIRY", "3")),
