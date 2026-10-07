@@ -42,6 +42,12 @@ class Database:
             await conn.execute(
                 text(
                     "ALTER TABLE users "
+                    "ADD COLUMN IF NOT EXISTS preferred_investment_eur_equivalent NUMERIC(12, 2)"
+                )
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE users "
                     "ADD COLUMN IF NOT EXISTS investment_pending BOOLEAN DEFAULT FALSE"
                 )
             )
